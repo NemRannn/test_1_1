@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Breakout Game - Phá Gạch</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #2c3e50;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        #gameCanvas {
+            border: 2px solid #3498db;
+            background-color: #34495e;
+        }
+
+        #controlPanel {
+            position: fixed;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .game-button {
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .game-button:hover {
+            background-color: #2980b9;
+        }
+
+        #imageUpload {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="controlPanel">
+        <input type="file" id="imageUpload" accept="image/*">
+        <button id="chooseImageBtn" class="game-button">Chọn Ảnh</button>
+        <button id="startBtn" class="game-button">Bắt Đầu</button>
+        <button id="resetBtn" class="game-button">Chơi Lại</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const chooseImageBtn = document.getElementById('chooseImageBtn');
+        const imageUpload = document.getElementById('imageUpload');
+
+        // Thiết lập kích thước canvas
+        canvas.width = 800;
+        canvas.height = 600;
+
+        // Các biến trạng thái game
+        let ballImage = null;
+        let isGameRunning = false;
+        let gameOver = false;
+
+        // Sự kiện chọn ảnh
+        chooseImageBtn.addEventListener('click', () => {
+            imageUpload.click();
+        });
+
+        // Tải ảnh từ máy tính
+        imageUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        ballImage = img;
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Các thuộc tính thanh điều khiển
+        const paddleWidth = 150;
+        const paddleHeight = 20;
+        let paddleX = (canvas.width - paddleWidth) / 2;
+
+        // Các thuộc tính quả bóng
+        const ballRadius = 20;
+        let ballX = canvas.width / 2;
+        let ballY = canvas.height - 50;
+        let ballSpeedX = 5;
+        let ballSpeedY = -5;
+        let ballRotation = 0;
+
+        // Các thuộc tính gạch
+        const brickRowCount = 5;
+        const brickColumnCount = 8;
+        const brickWidth = 75;
+        const brickHeight = 30;
+        const brickPadding = 10;
+        const brickOffsetTop = 50;
+        const brickOffsetLeft = 30;
+
+        // Mảng lưu trạng thái các gạch
+        const bricks = [];
+        for (let c = 0; c < brickColumnCount; c++) {
+            bricks[c] = [];
+            for (let r = 0; r < brickRowCount; r++) {
+                bricks[c][r] = { x: 0, y: 0, status: 1 };
+            }
+        }
+
+        // Điểm số
+        let score = 0;
+
+        // Sự kiện di chuyển chuột
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            paddleX = mouseX - paddleWidth / 2;
+
+            // Giới hạn thanh điều khiển không ra khỏi canvas
+            if (paddleX < 0) paddleX = 0;
+            if (paddleX + paddleWidth > canvas.width) paddleX = canvas.width - paddleWidth;
+        });
+
+        // Vẽ các gạch
+        function drawBricks() {
+            for (let c = 0; c < brickColumnCount; c++) {
+                for (let r = 0; r < brickRowCount; r++) {
+                    if (bricks[c][r].status === 1) {
+                        const brickX = c * (brickWidth + brickPadding) + brickOffsetLeft;
+                        const brickY = r * (brickHeight + brickPadding) + brickOffsetTop;
+                        bricks[c][r].x = brickX;
+                        bricks[c][r].y = brickY;
+
+                        ctx.beginPath();
+                        ctx.rect(brickX, brickY, brickWidth, brickHeight);
+                        ctx.fillStyle = `hsl(${c * 50}, 70%, 50%)`;
+                        ctx.fill();
+                        ctx.closePath();
+                    }
+                }
+            }
+        }
+
+        // Kiểm tra va chạm với gạch
+        function checkBrickCollision() {
+            for (let c = 0; c < brickColumnCount; c++) {
+                for (let r = 0; r < brickRowCount; r++) {
+                    const b = bricks[c][r];
+                    if (b.status === 1) {
+                        if (
+                            ballX > b.x &&
+                            ballX < b.x + brickWidth &&
+                            ballY > b.y &&
+                            ballY < b.y + brickHeight
+                        ) {
+                            ballSpeedY = -ballSpeedY;
+                            b.status = 0;
+                            score++;
+
+                            // Tăng tốc độ bóng khi phá gạch
+                            ballSpeedX *= 1.02;
+                            ballSpeedY *= 1.02;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Vẽ quả bóng
+        function drawBall() {
+            ctx.save();
+            ctx.translate(ballX, ballY);
+            ctx.rotate(ballRotation);
+
+            if (ballImage) {
+                // Vẽ ảnh quay
+                ctx.drawImage(ballImage, -ballRadius, -ballRadius, ballRadius * 2, ballRadius * 2);
+            } else {
+                // Mặc định vẽ hình tròn
+                ctx.beginPath();
+                ctx.arc(0, 0, ballRadius, 0, Math.PI * 2);
+                ctx.fillStyle = 'red';
+                ctx.fill();
+                ctx.closePath();
+            }
+
+            ctx.restore();
+        }
+
+        // Vẽ thanh điều khiển
+        function drawPaddle() {
+            ctx.beginPath();
+            ctx.rect(paddleX, canvas.height - paddleHeight, paddleWidth, paddleHeight);
+            ctx.fillStyle = '#0095DD';
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        // Vẽ điểm số
+        function drawScore() {
+            ctx.font = '24px Arial';
+            ctx.fillStyle = 'white';
+            ctx.fillText(`Điểm: ${score}`, 8, 25);
+        }
+
+        // Chuyển động và va chạm của bóng
+        function updateBall() {
+            // Cập nhật vị trí bóng
+            ballX += ballSpeedX;
+            ballY += ballSpeedY;
+
+            // Quay bóng
+            ballRotation += 0.2;
+
+            // Va chạm biên trái và phải
+            if (ballX + ballRadius > canvas.width || ballX - ballRadius < 0) {
+                ballSpeedX = -ballSpeedX;
+            }
+
+            // Va chạm trên
+            if (ballY - ballRadius < 0) {
+                ballSpeedY = -ballSpeedY;
+            }
+
+            // Va chạm thanh điều khiển
+            if (
+                ballY + ballRadius > canvas.height - paddleHeight &&
+                ballX > paddleX &&
+                ballX < paddleX + paddleWidth
+            ) {
+                ballSpeedY = -Math.abs(ballSpeedY);
+                
+                // Thay đổi góc bật dựa vào vị trí va chạm
+                let deltaX = ballX - (paddleX + paddleWidth / 2);
+                ballSpeedX = deltaX * 0.2;
+            }
+
+            // Thua game
+            if (ballY + ballRadius > canvas.height) {
+                gameOver = true;
+            }
+        }
+
+        // Vòng lặp game chính
+        function gameLoop() {
+            if (!isGameRunning || gameOver) return;
+
+            // Xóa canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Vẽ các thành phần
+            drawBricks();
+            drawBall();
+            drawPaddle();
+            drawScore();
+
+            // Kiểm tra va chạm
+            checkBrickCollision();
+            updateBall();
+
+            // Kiểm tra chiến thắng
+            if (score === brickRowCount * brickColumnCount) {
+                alert('Chúc mừng! Bạn đã phá hết các gạch!');
+                gameOver = true;
+            }
+
+            // Tiếp tục vòng lặp game
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Khởi động game
+        startBtn.addEventListener('click', () => {
+            if (!isGameRunning) {
+                isGameRunning = true;
+                gameOver = false;
+                gameLoop();
+            }
+        });
+
+        // Chơi lại
+        resetBtn.addEventListener('click', () => {
+            // Đặt lại trạng thái game
+            ballX = canvas.width / 2;
+            ballY = canvas.height - 50;
+            ballSpeedX = 5;
+            ballSpeedY = -5;
+            paddleX = (canvas.width - paddleWidth) / 2;
+            score = 0;
+            gameOver = false;
+
+            // Khôi phục trạng thái gạch
+            for (let c = 0; c < brickColumnCount; c++) {
+                for (let r = 0; r < brickRowCount; r++) {
+                    bricks[c][r].status = 1;
+                }
+            }
+
+            // Dừng game hiện tại nếu đang chạy
+            isGameRunning = false;
+
+            // Xóa canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        });
+    </script>
+</body>
+</html>
